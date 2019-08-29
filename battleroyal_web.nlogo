@@ -1,9 +1,10 @@
-
+extensions[stats]
 breed [players player]
 
 globals[
   skill_rankings
   correl
+  list_nr_encounters
   circle_center
   spearman_skill_value
   winner_skill_rank
@@ -12,6 +13,7 @@ globals[
   nr_better_positioned
   nr_def_died
   advantage
+  winning_chance
 ]
 
 patches-own[
@@ -48,15 +50,18 @@ to go
   ]
   if ticks mod 2 = 1 and not remove_circle?[
       do_update_circle
+
   ]
 
   do_move_and_battle
-
+  do_plots
 
   if (count players = 1 and ticks > 2)[
     ask one-of players[
-      ;stats:add skill_rankings (list skill_rank count players)
+      stats:add skill_rankings (list skill_rank count players)
+      set list_nr_encounters insert-item 0 list_nr_encounters nr_encounters
       set winner_skill_rank skill_rank
+      ;show max list_nr_encounters
     ]
     do_spearman
     do_checks
@@ -65,10 +70,11 @@ to go
 end
 
 to setup
-  random-seed behaviorspace-run-number
+  ;random-seed behaviorspace-run-number
   clear-all
   reset-ticks
-  ;set skill_rankings stats:newtable
+  set skill_rankings stats:newtable
+  set list_nr_encounters (list)
 end
 
 to do_spawn
@@ -140,11 +146,17 @@ to do_move_and_battle
       ifelse positioning > ([positioning] of encounter) [set advantage "a"][set advantage "d"]
       if positioning = ([positioning] of encounter)[set advantage "n"]
 
-      let winning_chance (((1 - movem_penalty) * (imp_skill_over_positioning * skill + (1 - imp_skill_over_positioning) * positioning)) / (((1 - movem_penalty) * (imp_skill_over_positioning * skill + (1 - imp_skill_over_positioning) * positioning)) + (imp_skill_over_positioning * [skill] of encounter + (1 - imp_skill_over_positioning) * [positioning] of encounter) + 0.0000000001))
+      if skill_and_positioning = "addition"[
+      set winning_chance (((1 - movem_penalty) * (imp_skill_over_positioning * skill + (1 - imp_skill_over_positioning) * positioning)) / (((1 - movem_penalty) * (imp_skill_over_positioning * skill + (1 - imp_skill_over_positioning) * positioning)) + (imp_skill_over_positioning * [skill] of encounter + (1 - imp_skill_over_positioning) * [positioning] of encounter) + 0.0000000001))
+     ]
+      if skill_and_positioning = "multiplication"[
+      set winning_chance (((1 - movem_penalty * skill) * (imp_skill_over_positioning * skill + (1 - imp_skill_over_positioning) * positioning * skill)) / (((1 - movem_penalty) * (imp_skill_over_positioning * skill + (1 - imp_skill_over_positioning) * positioning * skill)) + (imp_skill_over_positioning * [skill] of encounter + (1 - imp_skill_over_positioning) * [positioning] of encounter  * [skill] of encounter) + 0.0000000001))
+      ]
 
       let temp random-float 1
       if temp > winning_chance[   ;attacker dies
-        ;stats:add skill_rankings (list skill_rank count players)
+        stats:add skill_rankings (list skill_rank count players)
+        set list_nr_encounters insert-item 0 list_nr_encounters nr_encounters
         set nr_at_died (nr_at_died + 1)
         if advantage = "d" [set nr_worse_positioned (nr_worse_positioned + 1)]
         if advantage = "a" [set nr_better_positioned (nr_better_positioned + 1)]
@@ -192,7 +204,8 @@ to do_move_and_battle
 
 
          ask encounter[
-           ;stats:add skill_rankings (list skill_rank count players)
+           stats:add skill_rankings (list skill_rank count players)
+           set list_nr_encounters insert-item 0 list_nr_encounters nr_encounters
            set nr_def_died (nr_def_died + 1)
            if advantage = "a" [set nr_worse_positioned (nr_worse_positioned + 1)]
            if advantage = "d" [set nr_better_positioned (nr_better_positioned + 1)]
@@ -207,13 +220,16 @@ to do_plots
   set-current-plot "skills"
   set-current-plot-pen "skills"
   histogram [skill] of players
+  set-current-plot "encounters"
+  set-current-plot-pen "enc"
+  histogram list_nr_encounters
 end
 
 to do_spearman
-  ;set correl stats:correlation skill_rankings
+  set correl stats:correlation skill_rankings
   ;output-print stats:get-observations skill_rankings 0
   ;output-print stats:get-observations skill_rankings 1
-  ;set spearman_skill_value item 0 item 1 correl
+  set spearman_skill_value item 0 item 1 correl
 end
 
 to do_checks
@@ -225,8 +241,8 @@ to do_checks
   ;show nr_worse_positioned / nr_players
   ;show "percent better_positioned died:"
   ;show nr_better_positioned / nr_players
-  ;show "spearman skill & result:"
-  ;show spearman_skill_value
+  show "spearman skill & result:"
+  show spearman_skill_value
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -298,7 +314,7 @@ CHOOSER
 skill_distribution
 skill_distribution
 "uniform" "normal" "exponential"
-0
+2
 
 SLIDER
 25
@@ -316,10 +332,10 @@ NIL
 HORIZONTAL
 
 PLOT
-17
-235
-217
-385
+21
+304
+221
+454
 skills
 NIL
 NIL
@@ -342,7 +358,7 @@ movem_penalty
 movem_penalty
 0
 1
-0.0
+0.3
 0.05
 1
 NIL
@@ -379,7 +395,7 @@ imp_skill_over_positioning
 imp_skill_over_positioning
 0
 1
-1.0
+0.66
 0.05
 1
 NIL
@@ -392,7 +408,7 @@ SWITCH
 283
 skillful_movement?
 skillful_movement?
-1
+0
 1
 -1000
 
@@ -403,10 +419,10 @@ SLIDER
 97
 nr_players
 nr_players
-20
+10
 1000
-20.0
-20
+100.0
+10
 1
 NIL
 HORIZONTAL
@@ -418,7 +434,7 @@ SWITCH
 121
 skill_affects_looting_and_injuries?
 skill_affects_looting_and_injuries?
-1
+0
 1
 -1000
 
@@ -429,9 +445,37 @@ SWITCH
 75
 looting_and_injuries?
 looting_and_injuries?
-1
+0
 1
 -1000
+
+PLOT
+243
+307
+443
+457
+encounters
+NIL
+NIL
+1.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"enc" 1.0 1 -16777216 true "" ""
+
+CHOOSER
+606
+218
+744
+263
+skill_and_positioning
+skill_and_positioning
+"addition" "multiplication"
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -811,6 +855,15 @@ NetLogo 6.1.0
     <enumeratedValueSet variable="movem_penalty">
       <value value="0"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="looting_and_injuries?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_affects_looting_and_injuries?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_and_positioning">
+      <value value="&quot;addition&quot;"/>
+    </enumeratedValueSet>
   </experiment>
   <experiment name="shrinking_arena" repetitions="10000" sequentialRunOrder="false" runMetricsEveryStep="false">
     <setup>setup</setup>
@@ -845,22 +898,31 @@ NetLogo 6.1.0
     <enumeratedValueSet variable="movem_penalty">
       <value value="0"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="looting_and_injuries?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_affects_looting_and_injuries?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_and_positioning">
+      <value value="&quot;addition&quot;"/>
+    </enumeratedValueSet>
   </experiment>
-  <experiment name="experiment" repetitions="10000" sequentialRunOrder="false" runMetricsEveryStep="false">
+  <experiment name="advanced features" repetitions="10000" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <metric>spearman_skill_value</metric>
     <metric>winner_skill_rank</metric>
     <enumeratedValueSet variable="imp_skill_over_positioning">
       <value value="1"/>
-      <value value="0.75"/>
-      <value value="0.5"/>
+      <value value="0.66"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="skill_spread">
       <value value="0.2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="terrain?">
       <value value="true"/>
+      <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="remove_circle?">
       <value value="false"/>
@@ -886,8 +948,88 @@ NetLogo 6.1.0
     </enumeratedValueSet>
     <enumeratedValueSet variable="movem_penalty">
       <value value="0"/>
-      <value value="0.25"/>
+      <value value="0.33"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_and_positioning">
+      <value value="&quot;addition&quot;"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="advanced features extended" repetitions="10000" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <metric>spearman_skill_value</metric>
+    <metric>winner_skill_rank</metric>
+    <enumeratedValueSet variable="imp_skill_over_positioning">
       <value value="0.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_spread">
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="terrain?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="remove_circle?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skillful_movement?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_players">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_affects_looting_and_injuries?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_distribution">
+      <value value="&quot;exponential&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="looting_and_injuries?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="movem_penalty">
+      <value value="0.33"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_and_positioning">
+      <value value="&quot;multiplication&quot;"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="malte" repetitions="10000" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <metric>spearman_skill_value</metric>
+    <metric>winner_skill_rank</metric>
+    <enumeratedValueSet variable="imp_skill_over_positioning">
+      <value value="0.66"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_spread">
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_and_positioning">
+      <value value="&quot;multiplication&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="terrain?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="remove_circle?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skillful_movement?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="nr_players">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_distribution">
+      <value value="&quot;exponential&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="skill_affects_looting_and_injuries?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="looting_and_injuries?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="movem_penalty">
+      <value value="0.3"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
